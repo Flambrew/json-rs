@@ -44,6 +44,79 @@ fn parse_word(json: &[u8], offset: &mut usize, target: &'static str) -> bool {
     }
 }
 
+enum NumberPhase {
+    NEG,
+    DIG,
+    FRC,
+    EXP,
+}
+
+fn parse_num(json: &[u8], offset: &mut usize) -> Option<Value> {
+    let mut int: i64 = 0;
+    let mut flt: f64 = 0.;
+    let mut dec: u32 = 1;
+    let mut exp: f64 = 0.;
+    let mut negflag: i64 = 1;
+    let mut zeroflag: bool = false;
+    let mut expsignflag: f64 = 0.;
+    let mut phase: NumberPhase = NumberPhase::NEG;
+    loop { match phase {
+        NumberPhase::NEG => match json[*offset] {
+            x if x == b'-' && negflag == 0 => { 
+                negflag = -1;
+            },
+            _ => { 
+                phase = NumberPhase::DIG; 
+                continue; 
+            },
+        },
+        NumberPhase::DIG => match json[*offset] {
+            x if x == b'0' && int == 0 => {
+                zeroflag = true;
+            },
+            x if x.is_ascii_digit() && !zeroflag => {
+                int = int * 10 + (x - b'0') as i64;
+            },
+            x if x == b'.' => {
+                flt = int as f64;
+                phase = NumberPhase::FRC;
+            },
+            x if x == b'e' || x == b'E' => {
+                flt = int as f64;
+                phase = NumberPhase::EXP;
+            },
+            _ => break,
+        },
+        NumberPhase::FRC => match json[*offset] {
+            x if x.is_ascii_digit() => {
+                flt += (x - b'0') as f64 / i32::pow(10, dec) as f64;
+                dec += 1;
+            },
+            x if x == b'e' || x == b'E' => {
+                phase = NumberPhase::EXP;
+            },
+            _ => return Some(Value::Flt(flt * negflag as f64)),
+        },
+        NumberPhase::EXP => match json[*offset] {
+            x if x == b'-' && expsignflag == 0. => expsignflag = -1.,
+            x if x == b'+' && expsignflag == 0. => expsignflag = 1.,
+            x if x.is_ascii_digit() => {
+                if expsignflag == 0. {
+                    expsignflag = 1.;
+                }
+                exp = exp * 10. + (x - b'0') as f64;
+            },
+            _ => return Some(Value::Flt(flt * ((10 * negflag) as f64).powf(exp * expsignflag))),
+        },
+    } *offset += 1; }
+    
+    if int > 0 || zeroflag {
+        return Some(Value::Int(int * negflag))
+    } else {
+        return None
+    }
+}
+
 enum ArrayPhase {
     END,
     WS0,
@@ -87,48 +160,6 @@ fn parse_array(json: &[u8], offset: &mut usize) -> Option<Vec<Value>> {
             },
             _ => return None,
         },
-    }}
-}
-
-enum NumberPhase {
-    NEG,
-    DIG,
-    FRC,
-    EXP,
-}
-
-fn parse_num(json: &[u8], offset: &mut usize) -> Option<Value> {
-    let mut int: i64 = 0;
-    // let mut flt: f64 = 0.;
-    let mut phase: NumberPhase = NumberPhase::NEG;
-    let mut negflag: i64 = 1;
-    loop { match phase {
-        NumberPhase::NEG => match json[*offset] {
-            x if x == b'-' => { 
-                negflag = -1;
-                *offset += 1;
-            },
-            _ => phase = NumberPhase::DIG,
-        },
-        NumberPhase::DIG => match json[*offset] {
-            x if x.is_ascii_digit() => {
-                int = int * 10 + (x - b'0') as i64;
-                *offset += 1;
-            },
-            x if x == b'.' => {
-                // flt = int as f64;
-                phase = NumberPhase::FRC;
-                *offset += 1;
-            },
-            x if x == b'e' || x == b'E' => {
-                // flt = int as f64;
-                phase = NumberPhase::EXP;
-                *offset += 1;
-            },
-            _ => return Some(Value::Int(int * negflag)),
-        },
-        NumberPhase::FRC => return None,
-        NumberPhase::EXP => return None,
     }}
 }
 
