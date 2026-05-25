@@ -1,2 +1,2 @@
 # json-rs
-Handmade JSON parser using Rust
+Handmade ASCII JSON parser using Rust
