@@ -1,6 +1,7 @@
 use std::fs;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct NVPair {
     key: String,
     value: Value,
@@ -19,14 +20,13 @@ pub enum Value {
 }
 
 fn parse_word(json: &[u8], offset: &mut usize, target: &'static str) -> bool {
-    let i: usize = 0;
-    loop { 
-        let c: u8 = target.as_bytes()[i];
-        match c {
+    for i in 0..target.len() {
+        match target.as_bytes()[i] {
             c if c == json[*offset] => *offset += 1,
-            _ => return c == b'\0',
+            _ => return false,
         }
     }
+    true
 }
 
 fn parse_string(json: &[u8], offset: &mut usize) -> String {
@@ -74,7 +74,7 @@ fn parse_num(json: &[u8], offset: &mut usize) -> Option<Value> {
     let mut phase: NumberPhase = NumberPhase::NEG;
     loop { match phase {
         NumberPhase::NEG => match json[*offset] {
-            c if c == b'-' && negflag == 0 => { 
+            c if c == b'-' && negflag == 1 => { 
                 negflag = -1;
             },
             _ => { 
@@ -118,7 +118,7 @@ fn parse_num(json: &[u8], offset: &mut usize) -> Option<Value> {
                 }
                 exp = exp * 10. + (c - b'0') as f64;
             },
-            _ => return Some(Value::Flt(flt * ((10 * negflag) as f64).powf(exp * expsignflag))),
+            _ => return Some(Value::Flt(flt * ((10) as f64).powf(exp * expsignflag) * negflag as f64)),
         },
     } *offset += 1; }
     
@@ -212,6 +212,7 @@ enum ObjectPhase {
 
 fn parse_object(json: &[u8], offset: &mut usize) -> Option<Vec<NVPair>> {
     *offset += 1;
+    let mut name: String = String::new();
     let mut out: Vec<NVPair> = Vec::new();
     let mut phase: ObjectPhase = ObjectPhase::END;
     loop { match phase {
@@ -226,14 +227,13 @@ fn parse_object(json: &[u8], offset: &mut usize) -> Option<Vec<NVPair>> {
         ObjectPhase::WS0 => match json[*offset] {
             c if c.is_ascii_whitespace() => *offset += 1,
             b'"' => {
-                out.push(NVPair{ key: String::new(), value: Value::Null });
                 phase = ObjectPhase::STR;
             },
             _ => return None,
         },
         ObjectPhase::STR => match parse_string(json, offset) {
             x if !x.is_empty() => {
-                out.last_mut().unwrap().key = x;
+                name = x;
                 phase = ObjectPhase::WS1;
             },
             _ => return None,
@@ -248,7 +248,7 @@ fn parse_object(json: &[u8], offset: &mut usize) -> Option<Vec<NVPair>> {
         },
         ObjectPhase::VAL => match parse_value(json, offset) {
             Some(val) => {
-                out.last_mut().unwrap().value = val;
+                out.push(NVPair{ key: name.clone(), value: val });
                 phase = ObjectPhase::WS2;
             },
             None => return None,
@@ -268,19 +268,22 @@ fn parse_object(json: &[u8], offset: &mut usize) -> Option<Vec<NVPair>> {
     }}
 }
 
-pub fn parse_json(path: &String) -> Option<Vec<NVPair>> {
+pub fn parse_json(path: &str) -> Option<Value> {
     match fs::read_to_string(path) {
         Ok(json) => {
             let json = json.as_bytes();
             let mut offset: usize = 0;
-            let mut out: Option<Vec<NVPair>> = None;
-            while offset != json.len() {
-                match json[offset] {
-                    b'{' => out = Some(parse_object(json, &mut offset)?),
-                    c if c.is_ascii_whitespace() => offset += 1,
-                    _ => return None
-                }
-            }
+            let mut parsed: bool = false;
+            let mut out: Option<Value> = None;
+            while offset < json.len() { match json[offset] {
+                c if c.is_ascii_whitespace() => offset += 1,
+                _ if !parsed => {
+                    out = Some(parse_value(json, &mut offset)?);
+                    parsed = true;
+                },
+                _ => return None,
+            }}
+
             out
         },
         Err(_) => None,
