@@ -2,5 +2,7 @@
 name = "flambrew-json-rs"
 version = "1.0.0"
 edition = "2024"
-
-[dependencies]
+readme = "README.md"
+description = "Simple handmade ASCII JSON parser using Rust"
+license = "GPL-3.0-only"
+repository = "https://github.com/Flambrew/json-rs"
